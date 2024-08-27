@@ -30,9 +30,6 @@ Find risky auto-incremental columns on databases which values are close to max p
 php artisan database:find-risky-columns
 ```
 
-https://medium.com/beyn-technology/ill-never-forget-this-number-4294967295-0xffffffff-c9ad4b72f53a
-
-
 ### Changelog
 
 Please see [Releases](https://github.com/InteractionDesignFoundation/laravel-db-toolkit/releases) for more information on what has changed recently.

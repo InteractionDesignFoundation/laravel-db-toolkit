@@ -20,13 +20,17 @@ composer require interaction-design-foundation/laravel-db-toolkit
 
 ## Usage
 
+Find invalid data created in [non-strict SQL mode](https://coderflex.com/blog/laravel-strict-mode-all-what-you-need-to-know).
 ```shell
-# Find invalid data created in non-strict SQL mode.
 php artisan database:find-invalid-values
+```
 
-# Find risky auto-incremental columns on databases which values are close to max possible values.
+Find risky auto-incremental columns on databases which values are close to max possible values ([article](https://medium.com/beyn-technology/ill-never-forget-this-number-4294967295-0xffffffff-c9ad4b72f53a)).
+```shell
 php artisan database:find-risky-columns
 ```
+
+https://medium.com/beyn-technology/ill-never-forget-this-number-4294967295-0xffffffff-c9ad4b72f53a
 
 
 ### Changelog

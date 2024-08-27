@@ -1,0 +1,51 @@
+{
+    "name": "interaction-design-foundation/laravel-db-toolkit",
+    "description": "A set of console commands for SQL databases",
+    "license": "MIT",
+    "type": "library",
+    "keywords": [
+        "laravel",
+        "database",
+        "console commands"
+    ],
+    "require": {
+        "php": "^8.1",
+        "doctrine/dbal": "^3.7 || ^4.0",
+        "laravel/framework": "^10.2"
+    },
+    "require-dev": {
+        "interaction-design-foundation/coding-standard": "^0.3",
+        "phpunit/phpunit": "^10.1"
+    },
+    "minimum-stability": "dev",
+    "prefer-stable": true,
+    "autoload": {
+        "psr-4": {
+            "InteractionDesignFoundation\\LaravelDatabaseToolkit\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "InteractionDesignFoundation\\LaravelDatabaseToolkit\\Tests\\": "tests/"
+        }
+    },
+    "config": {
+        "allow-plugins": {
+            "dealerdirect/phpcodesniffer-composer-installer": true
+        },
+        "sort-packages": true
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "InteractionDesignFoundation\\LaravelDatabaseToolkit\\DatabaseToolkitServiceProvider"
+            ]
+        }
+    },
+    "scripts": {
+        "cs:check": "phpcbf -p -s --colors --report-full --report-summary",
+        "cs:fix": "phpcbf -p --colors",
+        "cs": "@cs:fix",
+        "test": "phpunit --colors=always"
+    }
+}

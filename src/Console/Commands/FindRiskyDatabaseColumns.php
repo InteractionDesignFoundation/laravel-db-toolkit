@@ -54,7 +54,7 @@ final class FindRiskyDatabaseColumns extends DatabaseInspectionCommand
         ],
         'bigint unsigned' => [
             'min' => 0,
-            'max' => 180_709_551_615,
+            'max' => 18_446_744_073_709_551_615,
         ],
         'tinyint' => [
             'min' => -128,

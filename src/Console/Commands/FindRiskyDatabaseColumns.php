@@ -210,15 +210,4 @@ final class FindRiskyDatabaseColumns extends DatabaseInspectionCommand
         $suffix = $suffixes[$index];
         return round(1024 ** ($base - floor($base)), $precision).$suffix;
     }
-    protected function getTableSize($connection, string $table)
-    {
-        $result = $connection->selectOne(
-            'SELECT (data_length + index_length) AS size FROM information_schema.TABLES WHERE table_schema = ? AND table_name = ?', [
-                $connection->getDatabaseName(),
-                $table,
-            ]
-        );
-
-        return Arr::wrap((array) $result)['size'];
-    }
 }

@@ -20,15 +20,21 @@ final class FindInvalidDatabaseValues extends DatabaseInspectionCommand
     private const CHECK_TYPE_LONG_TEXT = 'long_text';
     private const CHECK_TYPE_LONG_STRING = 'long_string';
 
-    /** @var string The name and signature of the console command. */
+    /**
+     * @var string The name and signature of the console command. 
+     */
     protected $signature = 'database:find-invalid-values {connection=default} {--check=* : Check only specific types of issues. Available types: {null, datetime, long_text, long_string}}';
 
-    /** @var string The console command description. */
+    /**
+     * @var string The console command description. 
+     */
     protected $description = 'Find invalid data created in non-strict SQL mode.';
 
     private int $valuesWithIssuesFound = 0;
 
-    /** @throws \Doctrine\DBAL\Exception */
+    /**
+     * @throws \Doctrine\DBAL\Exception 
+     */
     public function handle(ConnectionResolverInterface $connections): int
     {
         $connection = $this->getConnection($connections);
@@ -106,8 +112,7 @@ final class FindInvalidDatabaseValues extends DatabaseInspectionCommand
     private function checkForInvalidDatetimeValues(Column $column, Connection $connection, Table $table): void
     {
         $integerProbablyUsedForTimestamp = in_array($column->getType()->getName(), [Types::INTEGER, Types::BIGINT], true) && (str_contains($column->getName(), 'timestamp') || str_ends_with($column->getName(), '_at'));
-        if (
-            $integerProbablyUsedForTimestamp
+        if ($integerProbablyUsedForTimestamp
             || in_array($column->getType()->getName(), [Types::DATE_MUTABLE, Types::DATE_IMMUTABLE, Types::DATETIME_MUTABLE, Types::DATETIME_IMMUTABLE, Types::DATETIMETZ_MUTABLE, Types::DATETIMETZ_IMMUTABLE], true)
         ) {
             $columnName = $column->getName();

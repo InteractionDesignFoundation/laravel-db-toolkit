@@ -1,17 +1,42 @@
 name: run-tests
 
-on: [ push, pull_request ]
+on: [push, pull_request]
 
 jobs:
   test:
     runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: test_db
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping --silent"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=3
+
     strategy:
       fail-fast: true
       matrix:
-        php: [ 8.1, 8.2, 8.3 ]
-        laravel: [ 10.* ]
-        testbench: [ 8.* ]
-        dependency-version: [ prefer-stable ]
+        php: [8.1, 8.2, 8.3]
+        laravel: [10.*, 11.*]
+        dependency-version: [prefer-stable]
+        include:
+          - laravel: 10.*
+            testbench: 8.*
+          - laravel: 11.*
+            testbench: 9.*
+        exclude:
+          - laravel: 10.*
+            php: 8.0
+          - laravel: 11.*
+            php: 8.1
+          - laravel: 11.*
+            php: 8.0
 
     name: P${{ matrix.php }} - L${{ matrix.laravel }} - ${{ matrix.dependency-version }}
 
@@ -23,7 +48,7 @@ jobs:
         uses: shivammathur/setup-php@v2
         with:
           php-version: ${{ matrix.php }}
-          extensions: dom, curl, libxml, mbstring, zip, pcntl, pdo, sqlite, pdo_sqlite, bcmath, soap, intl, gd, exif, iconv, imagick, fileinfo
+          extensions: dom, curl, libxml, mbstring, zip, pcntl, pdo, sqlite, pdo_sqlite, bcmath, soap, intl, gd, exif, iconv, imagick, fileinfo, pdo_mysql
           coverage: none
 
       - name: Setup problem matchers
@@ -37,6 +62,15 @@ jobs:
           composer update --${{ matrix.dependency-version }} --prefer-dist --no-interaction
         env:
           COMPOSER_AUTH: ${{ secrets.COMPOSER_AUTH }}
+
+      - name: Set up environment variables
+        run: |
+          echo "DB_CONNECTION=mysql" >> $GITHUB_ENV
+          echo "DB_HOST=127.0.0.1" >> $GITHUB_ENV
+          echo "DB_PORT=3306" >> $GITHUB_ENV
+          echo "DB_DATABASE=test_db" >> $GITHUB_ENV
+          echo "DB_USERNAME=root" >> $GITHUB_ENV
+          echo "DB_PASSWORD=root" >> $GITHUB_ENV
 
       - name: Execute tests
         run: composer test

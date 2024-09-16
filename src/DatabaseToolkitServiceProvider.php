@@ -10,15 +10,18 @@ final class DatabaseToolkitServiceProvider extends ServiceProvider
 {
     /**
      * Bootstrap any package services.
+     *
      * @see https://laravel.com/docs/master/packages#commands
      */
     public function boot(): void
     {
         if ($this->app->runningInConsole()) {
-            $this->commands([
+            $this->commands(
+                [
                 FindInvalidDatabaseValues::class,
                 FindRiskyDatabaseColumns::class,
-            ]);
+                ]
+            );
         }
     }
 }

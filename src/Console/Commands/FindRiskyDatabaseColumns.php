@@ -10,6 +10,7 @@ use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Symfony\Component\Console\Attribute\AsCommand;
+use function Laravel\Prompts\table;
 
 /**
  * Inspired by @see https://medium.com/beyn-technology/ill-never-forget-this-number-4294967295-0xffffffff-c9ad4b72f53a
@@ -101,7 +102,7 @@ final class FindRiskyDatabaseColumns extends DatabaseInspectionCommand
         $outputTable = [];
 
         foreach (Schema::getTables() as $table) {
-            $riskyColumnsInfo = $this->processTable(Arr::get($table, 'name'), $connection, $thresholdAlarmPercentage);
+            $riskyColumnsInfo = $this->processTable($table, $connection, $thresholdAlarmPercentage);
             if (is_array($riskyColumnsInfo)) {
                 $outputTable = [...$outputTable, ...$riskyColumnsInfo];
             }
@@ -125,11 +126,12 @@ final class FindRiskyDatabaseColumns extends DatabaseInspectionCommand
     /**
      * @return list<array<string, string>>|null
      */
-    private function processTable(string $tableName, Connection $connection, float $thresholdAlarmPercentage): ?array
+    private function processTable(array $table, Connection $connection, float $thresholdAlarmPercentage): ?array
     {
+        $tableName = Arr::get($table, 'name');
         $this->comment("Table {$connection->getDatabaseName()}.{$tableName}: checking...", 'v');
 
-        $tableSize = $this->getTableSize($connection, $tableName);
+        $tableSize = Arr::get($table, 'size');
 
         if ($tableSize === null) {
             $tableSize = -1; // not critical info, we can skip this issue

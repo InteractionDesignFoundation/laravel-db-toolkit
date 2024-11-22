@@ -6,11 +6,9 @@ use Illuminate\Database\Connection;
 use Illuminate\Database\ConnectionResolverInterface;
 use Illuminate\Database\Console\DatabaseInspectionCommand;
 use Illuminate\Database\MySqlConnection;
-use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Symfony\Component\Console\Attribute\AsCommand;
-use function Laravel\Prompts\table;
 
 /**
  * Inspired by @see https://medium.com/beyn-technology/ill-never-forget-this-number-4294967295-0xffffffff-c9ad4b72f53a
@@ -27,25 +25,19 @@ use function Laravel\Prompts\table;
 #[AsCommand('database:find-risky-columns')]
 final class FindRiskyDatabaseColumns extends DatabaseInspectionCommand
 {
-    /**
-     * @var string The name and signature of the console command.
-     */
+    /** @var string The name and signature of the console command. */
     protected $signature = 'database:find-risky-columns {connection=default} {--threshold=70 : Percentage occupied rows number on which the command should treat it as an issue}';
 
-    /**
-     * @var string The console command description.
-     */
+    /** @var string The console command description. */
     protected $description = 'Find risky auto-incremental columns on databases which values are close to max possible values.';
 
-    /**
-     * @var array<string, array{min: int|float, max: int|float}>
-     */
+    /** @var array<string, array{min: int|float, max: int|float}> */
     private array $columnMinsAndMaxs = [
         'integer' => [
             'min' => -2_147_483_648,
             'max' => 2_147_483_647,
         ],
-        'int unsigned' => [
+        'unsigned integer' => [
             'min' => 0,
             'max' => 4_294_967_295,
         ],
@@ -53,7 +45,7 @@ final class FindRiskyDatabaseColumns extends DatabaseInspectionCommand
             'min' => -9_223_372_036_854_775_808,
             'max' => 9_223_372_036_854_775_807,
         ],
-        'bigint unsigned' => [
+        'unsigned bigint' => [
             'min' => 0,
             'max' => 18_446_744_073_709_551_615,
         ],
@@ -61,7 +53,7 @@ final class FindRiskyDatabaseColumns extends DatabaseInspectionCommand
             'min' => -128,
             'max' => 127,
         ],
-        'tinyint unsigned' => [
+        'unsigned tinyint' => [
             'min' => 0,
             'max' => 255,
         ],
@@ -69,7 +61,7 @@ final class FindRiskyDatabaseColumns extends DatabaseInspectionCommand
             'min' => -32_768,
             'max' => 32_767,
         ],
-        'smallint unsigned' => [
+        'unsigned smallint' => [
             'min' => 0,
             'max' => 65_535,
         ],
@@ -77,7 +69,7 @@ final class FindRiskyDatabaseColumns extends DatabaseInspectionCommand
             'min' => -8_388_608,
             'max' => 8_388_607,
         ],
-        'mediumint unsigned' => [
+        'unsigned mediumint' => [
             'min' => 0,
             'max' => 16_777_215,
         ],
@@ -85,7 +77,7 @@ final class FindRiskyDatabaseColumns extends DatabaseInspectionCommand
             'min' => -99999999999999999999999999999.99999999999999999999999999999,
             'max' => 99999999999999999999999999999.99999999999999999999999999999,
         ],
-        'decimal unsigned' => [
+        'unsigned decimal' => [
             'min' => 0,
             'max' => 99999999999999999999999999999.99999999999999999999999999999,
         ],
@@ -94,15 +86,17 @@ final class FindRiskyDatabaseColumns extends DatabaseInspectionCommand
     public function handle(ConnectionResolverInterface $connections): int
     {
         $thresholdAlarmPercentage = (float) $this->option('threshold');
-        $connection = Schema::getConnection();
+
+        $connection = $this->getConnection($connections);
         if (! $connection instanceof MySqlConnection) {
             throw new \InvalidArgumentException('Command supports MySQL DBs only.');
         }
 
         $outputTable = [];
+        $tables = Schema::getConnection()->getDoctrineSchemaManager()->listTableNames();
 
-        foreach (Schema::getTables() as $table) {
-            $riskyColumnsInfo = $this->processTable($table, $connection, $thresholdAlarmPercentage);
+        foreach ($tables as $tableName) {
+            $riskyColumnsInfo = $this->processTable($tableName, $connection, $thresholdAlarmPercentage);
             if (is_array($riskyColumnsInfo)) {
                 $outputTable = [...$outputTable, ...$riskyColumnsInfo];
             }
@@ -123,32 +117,27 @@ final class FindRiskyDatabaseColumns extends DatabaseInspectionCommand
         return self::FAILURE;
     }
 
-    /**
-     * @return list<array<string, string>>|null
-     */
-    private function processTable(array $table, Connection $connection, float $thresholdAlarmPercentage): ?array
+    /** @return list<array<string, string>>|null */
+    private function processTable(string $tableName, Connection $connection, float $thresholdAlarmPercentage): ?array
     {
-        $tableName = Arr::get($table, 'name');
         $this->comment("Table {$connection->getDatabaseName()}.{$tableName}: checking...", 'v');
 
-        $tableSize = Arr::get($table, 'size');
-
+        $tableSize = $this->getTableSize($connection, $tableName);
         if ($tableSize === null) {
             $tableSize = -1; // not critical info, we can skip this issue
         }
 
-        /**
-         * @var \Illuminate\Support\Collection<int, Schema> $getColumns
-         */
-        $columns = collect(Schema::getColumns($tableName))->filter(
-            static fn($column): bool => Arr::get($column, 'auto_increment') === true
-        );
+        $columns = Schema::getConnection()->getDoctrineSchemaManager()->listTableColumns($tableName);
+        $autoIncrementColumns = array_filter($columns, fn($column) => $column->getAutoincrement());
 
         $riskyColumnsInfo = [];
 
-        foreach ($columns as $column) {
-            $columnName = Arr::get($column, 'name');
-            $columnType = Arr::get($column, 'type');
+        foreach ($autoIncrementColumns as $column) {
+            $columnName = $column->getName();
+            $columnType = $column->getType()->getName();
+            if ($column->getUnsigned()) {
+                $columnType = "unsigned {$columnType}";
+            }
 
             $this->comment("\t{$columnName} is autoincrement.", 'vvv');
 
@@ -177,6 +166,19 @@ final class FindRiskyDatabaseColumns extends DatabaseInspectionCommand
         return count($riskyColumnsInfo) > 0
             ? $riskyColumnsInfo
             : null;
+    }
+
+    private function getConnection(ConnectionResolverInterface $connections): Connection
+    {
+        $connectionName = $this->argument('connection');
+        if ($connectionName === 'default') {
+            $connectionName = config('database.default');
+        }
+
+        $connection = $connections->connection($connectionName);
+        assert($connection instanceof Connection);
+
+        return $connection;
     }
 
     private function getMaxValueForColumn(string $columnType): int | float

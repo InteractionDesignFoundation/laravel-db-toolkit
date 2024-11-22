@@ -2,14 +2,12 @@
 
 namespace InteractionDesignFoundation\LaravelDatabaseToolkit\Console\Commands;
 
-use Doctrine\DBAL\Schema\Column;
-use Doctrine\DBAL\Schema\Table;
-use Doctrine\DBAL\Types\Types;
 use Illuminate\Database\Connection;
 use Illuminate\Database\ConnectionResolverInterface;
 use Illuminate\Database\Console\DatabaseInspectionCommand;
 use Illuminate\Database\MySqlConnection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Symfony\Component\Console\Attribute\AsCommand;
 
 #[AsCommand('database:find-invalid-values')]
@@ -20,34 +18,27 @@ final class FindInvalidDatabaseValues extends DatabaseInspectionCommand
     private const CHECK_TYPE_LONG_TEXT = 'long_text';
     private const CHECK_TYPE_LONG_STRING = 'long_string';
 
-    /**
-     * @var string The name and signature of the console command. 
-     */
+    /** @var string The name and signature of the console command. */
     protected $signature = 'database:find-invalid-values {connection=default} {--check=* : Check only specific types of issues. Available types: {null, datetime, long_text, long_string}}';
 
-    /**
-     * @var string The console command description. 
-     */
+    /** @var string The console command description. */
     protected $description = 'Find invalid data created in non-strict SQL mode.';
 
     private int $valuesWithIssuesFound = 0;
 
-    /**
-     * @throws \Doctrine\DBAL\Exception 
-     */
     public function handle(ConnectionResolverInterface $connections): int
     {
         $connection = $this->getConnection($connections);
-        $schema = $connection->getDoctrineSchemaManager();
         if (!$connection instanceof MySqlConnection) {
             throw new \InvalidArgumentException('Command supports MySQL DBs only.');
         }
 
-        $this->registerTypeMappings($schema->getDatabasePlatform());
+        $tables = Schema::getConnection()->getDoctrineSchemaManager()->listTableNames();
 
-        foreach ($schema->listTables() as $table) {
-            foreach ($table->getColumns() as $column) {
-                $this->processColumn($column, $table, $connection);
+        foreach ($tables as $tableName) {
+            $columns = Schema::getConnection()->getDoctrineSchemaManager()->listTableColumns($tableName);
+            foreach ($columns as $column) {
+                $this->processColumn($column, $tableName, $connection);
             }
         }
 
@@ -60,24 +51,24 @@ final class FindInvalidDatabaseValues extends DatabaseInspectionCommand
         return self::FAILURE;
     }
 
-    private function processColumn(Column $column, Table $table, Connection $connection): void
+    private function processColumn(object $column, string $tableName, Connection $connection): void
     {
-        $this->info("{$table->getName()}.{$column->getName()}:\t{$column->getType()->getName()}", 'vvv');
+        $this->info("{$tableName}.{$column->getName()}:\t{$column->getType()->getName()}", 'vvv');
 
         if ($this->shouldRunCheckType(self::CHECK_TYPE_NULL)) {
-            $this->checkNullOnNotNullableColumn($column, $connection, $table);
+            $this->checkNullOnNotNullableColumn($column, $connection, $tableName);
         }
 
         if ($this->shouldRunCheckType(self::CHECK_TYPE_DATETIME)) {
-            $this->checkForInvalidDatetimeValues($column, $connection, $table);
+            $this->checkForInvalidDatetimeValues($column, $connection, $tableName);
         }
 
         if ($this->shouldRunCheckType(self::CHECK_TYPE_LONG_TEXT)) {
-            $this->checkForTooLongTextTypeValues($column, $connection, $table);
+            $this->checkForTooLongTextTypeValues($column, $connection, $tableName);
         }
 
         if ($this->shouldRunCheckType(self::CHECK_TYPE_LONG_STRING)) {
-            $this->checkForTooLongStringTypeValues($column, $connection, $table);
+            $this->checkForTooLongStringTypeValues($column, $connection, $tableName);
         }
     }
 
@@ -94,14 +85,14 @@ final class FindInvalidDatabaseValues extends DatabaseInspectionCommand
         return $connection;
     }
 
-    private function checkNullOnNotNullableColumn(Column $column, Connection $connection, Table $table): void
+    private function checkNullOnNotNullableColumn(object $column, Connection $connection, string $tableName): void
     {
         if ($column->getNotnull()) {
             $columnName = $column->getName();
 
-            $nullsOnNotNullableColumnCount = DB::selectOne("SELECT COUNT(`{$columnName}`) AS `count` FROM {$connection->getDatabaseName()}.`{$table->getName()}` WHERE `{$columnName}` IS NULL")->count;
+            $nullsOnNotNullableColumnCount = DB::selectOne("SELECT COUNT(`{$columnName}`) AS `count` FROM {$connection->getDatabaseName()}.`{$tableName}` WHERE `{$columnName}` IS NULL")->count;
             if ($nullsOnNotNullableColumnCount > 0) {
-                $this->error("{$table->getName()}.{$columnName} has {$nullsOnNotNullableColumnCount} NULLs but the column is not nullable.");
+                $this->error("{$tableName}.{$columnName} has {$nullsOnNotNullableColumnCount} NULLs but the column is not nullable.");
                 $this->valuesWithIssuesFound += $nullsOnNotNullableColumnCount;
             } else {
                 $this->comment("\t".self::CHECK_TYPE_NULL.': OK', 'vvv');
@@ -109,17 +100,19 @@ final class FindInvalidDatabaseValues extends DatabaseInspectionCommand
         }
     }
 
-    private function checkForInvalidDatetimeValues(Column $column, Connection $connection, Table $table): void
+    private function checkForInvalidDatetimeValues(object $column, Connection $connection, string $tableName): void
     {
-        $integerProbablyUsedForTimestamp = in_array($column->getType()->getName(), [Types::INTEGER, Types::BIGINT], true) && (str_contains($column->getName(), 'timestamp') || str_ends_with($column->getName(), '_at'));
-        if ($integerProbablyUsedForTimestamp
-            || in_array($column->getType()->getName(), [Types::DATE_MUTABLE, Types::DATE_IMMUTABLE, Types::DATETIME_MUTABLE, Types::DATETIME_IMMUTABLE, Types::DATETIMETZ_MUTABLE, Types::DATETIMETZ_IMMUTABLE], true)
+        $columnType = $column->getType()->getName();
+        $columnName = $column->getName();
+        
+        $integerProbablyUsedForTimestamp = in_array($columnType, ['integer', 'bigint'], true) && (str_contains($columnName, 'timestamp') || str_ends_with($columnName, '_at'));
+        if (
+            $integerProbablyUsedForTimestamp
+            || in_array($columnType, ['date', 'datetime', 'timestamp'], true)
         ) {
-            $columnName = $column->getName();
-
-            $invalidDatetimeRecordsCount = DB::selectOne("SELECT COUNT(`{$columnName}`) AS `count` FROM {$connection->getDatabaseName()}.`{$table->getName()}` WHERE `{$columnName}` <= 1")->count;
+            $invalidDatetimeRecordsCount = DB::selectOne("SELECT COUNT(`{$columnName}`) AS `count` FROM {$connection->getDatabaseName()}.`{$tableName}` WHERE `{$columnName}` <= 1")->count;
             if ($invalidDatetimeRecordsCount > 0) {
-                $this->error("{$table->getName()}.{$columnName} has {$invalidDatetimeRecordsCount} invalid datetime values.");
+                $this->error("{$tableName}.{$columnName} has {$invalidDatetimeRecordsCount} invalid datetime values.");
                 $this->valuesWithIssuesFound += $invalidDatetimeRecordsCount;
             } else {
                 $this->comment("\t".self::CHECK_TYPE_DATETIME.': OK', 'vvv');
@@ -127,14 +120,14 @@ final class FindInvalidDatabaseValues extends DatabaseInspectionCommand
         }
     }
 
-    private function checkForTooLongTextTypeValues(Column $column, Connection $connection, Table $table): void
+    private function checkForTooLongTextTypeValues(object $column, Connection $connection, string $tableName): void
     {
-        if ($column->getType()->getName() === Types::TEXT) {
+        if ($column->getType()->getName() === 'text') {
             $columnName = $column->getName();
 
-            $tooLongTextValuesCount = DB::selectOne("SELECT COUNT(`{$columnName}`) AS `count` FROM {$connection->getDatabaseName()}.`{$table->getName()}` WHERE LENGTH(`{$columnName}`) > @@max_allowed_packet;")->count;
+            $tooLongTextValuesCount = DB::selectOne("SELECT COUNT(`{$columnName}`) AS `count` FROM {$connection->getDatabaseName()}.`{$tableName}` WHERE LENGTH(`{$columnName}`) > @@max_allowed_packet;")->count;
             if ($tooLongTextValuesCount > 0) {
-                $this->error("{$table->getName()}.{$columnName} has {$tooLongTextValuesCount} too long text values.");
+                $this->error("{$tableName}.{$columnName} has {$tooLongTextValuesCount} too long text values.");
                 $this->valuesWithIssuesFound += $tooLongTextValuesCount;
             } else {
                 $this->comment("\t".self::CHECK_TYPE_LONG_TEXT.': OK', 'vvv');
@@ -142,23 +135,23 @@ final class FindInvalidDatabaseValues extends DatabaseInspectionCommand
         }
     }
 
-    private function checkForTooLongStringTypeValues(Column $column, Connection $connection, Table $table): void
+    private function checkForTooLongStringTypeValues(object $column, Connection $connection, string $tableName): void
     {
-        if (in_array($column->getType()->getName(), [Types::STRING, Types::ASCII_STRING], true)) {
+        if (in_array($column->getType()->getName(), ['string', 'ascii_string'], true)) {
             $columnName = $column->getName();
 
             $maxLength = $column->getLength();
 
             if (is_int($maxLength) && $maxLength !== 0) {
-                $tooLongStringValuesCount = DB::selectOne("SELECT COUNT(`{$columnName}`) AS `count` FROM {$connection->getDatabaseName()}.`{$table->getName()}` WHERE LENGTH(`{$columnName}`) > {$maxLength};")->count;
+                $tooLongStringValuesCount = DB::selectOne("SELECT COUNT(`{$columnName}`) AS `count` FROM {$connection->getDatabaseName()}.`{$tableName}` WHERE LENGTH(`{$columnName}`) > {$maxLength};")->count;
                 if ($tooLongStringValuesCount > 0) {
-                    $this->error("{$table->getName()}.{$columnName} has {$tooLongStringValuesCount} too long string values (longer than {$maxLength} chars).");
+                    $this->error("{$tableName}.{$columnName} has {$tooLongStringValuesCount} too long string values (longer than {$maxLength} chars).");
                     $this->valuesWithIssuesFound += $tooLongStringValuesCount;
                 } else {
                     $this->comment("\t".self::CHECK_TYPE_LONG_STRING.': OK', 'vvv');
                 }
             } else {
-                $this->warn("Could not find max length for {$table->getName()}.{$columnName} column.");
+                $this->warn("Could not find max length for {$tableName}.{$columnName} column.");
             }
         }
     }

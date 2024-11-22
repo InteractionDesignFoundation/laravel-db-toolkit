@@ -9,14 +9,13 @@
         "console commands"
     ],
     "require": {
-        "php": "^8.1",
-        "doctrine/dbal": "^3.7",
-        "laravel/framework": "^10.2 || ^11.0"
+        "php": "^8.2",
+        "laravel/framework": "^11.0"
     },
     "require-dev": {
         "interaction-design-foundation/coding-standard": "0.*",
-        "orchestra/testbench": "^8.0",
-        "phpunit/phpunit": "^10.1 || ^11.0"
+        "orchestra/testbench": "^9.0",
+        "phpunit/phpunit": "^11.0"
     },
     "minimum-stability": "dev",
     "prefer-stable": true,
